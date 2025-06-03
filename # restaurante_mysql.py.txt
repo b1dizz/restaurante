@@ -1,0 +1,565 @@
+import mysql.connector
+import openai
+
+openai.api_key = "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"
+
+from tkinter import *
+from tkinter import ttk
+from tkinter import messagebox
+
+# Chatbot com Gemini
+import customtkinter
+from CTkMessagebox import CTkMessagebox
+from datetime import datetime
+import google.generativeai as genai
+
+# Import Twilio
+from twilio.rest import Client
+
+# ==================== Configurações Twilio ====================
+# Substitua com suas credenciais reais
+account_sid = 'AC69d0cb5b9590ce775aeec59141a373a9'
+auth_token = '18c92bda86eccedba0bcf7b24bef1454'
+twilio_number = '+19786430907'  # Número Twilio
+client_twilio = Client(account_sid, auth_token)
+
+# ==================== Conexão com Banco ====================
+
+def conecta_bd():
+    conn = mysql.connector.connect(
+        host="localhost",
+        user="root",
+        password="",  # Sem senha
+        database="restaurante"
+    )
+    return conn
+
+# ==================== Atualizar Comboboxes ====================
+
+def atualizar_comboboxes_pedido():
+    conn = conecta_bd()
+    cursor = conn.cursor()
+
+    cursor.execute('SELECT nome FROM clientes')
+    clientes = [row[0] for row in cursor.fetchall()]
+    combobox_cliente_pedido['values'] = clientes
+
+    cursor.execute('SELECT nome FROM pratos')
+    pratos = [row[0] for row in cursor.fetchall()]
+    combobox_prato_pedido['values'] = pratos
+
+    conn.close()
+
+# ==================== Função para enviar SMS ====================
+
+def enviar_sms(telefone_cliente, mensagem):
+    if not telefone_cliente:
+        return  # Não envia se telefone vazio
+
+    try:
+        message = client_twilio.messages.create(
+            body=mensagem,
+            from_=twilio_number,
+            to=telefone_cliente
+        )
+    except Exception as e:
+        messagebox.showerror("Erro SMS", f"Falha ao enviar SMS: {str(e)}")
+
+# ==================== CRUD Clientes ====================
+
+def cadastrar_cliente():
+    nome = entry_nome_cliente.get()
+    telefone = entry_telefone_cliente.get()
+    email = entry_email_cliente.get()
+
+    if nome == '':
+        messagebox.showwarning("Atenção", "Nome é obrigatório!")
+        return
+
+    conn = conecta_bd()
+    cursor = conn.cursor()
+    cursor.execute('INSERT INTO clientes (nome, telefone, email) VALUES (%s, %s, %s)',
+                   (nome, telefone, email))
+    conn.commit()
+    conn.close()
+
+    listar_clientes()
+    atualizar_comboboxes_pedido()
+    limpar_campos_cliente()
+    messagebox.showinfo("Sucesso", "Cliente cadastrado com sucesso!")
+
+def listar_clientes():
+    for item in tree_clientes.get_children():
+        tree_clientes.delete(item)
+
+    conn = conecta_bd()
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM clientes')
+    dados = cursor.fetchall()
+    conn.close()
+
+    for row in dados:
+        tree_clientes.insert("", END, values=row)
+
+def excluir_cliente():
+    selecionado = tree_clientes.focus()
+    if not selecionado:
+        messagebox.showwarning("Atenção", "Selecione um cliente para excluir!")
+        return
+
+    valores = tree_clientes.item(selecionado, "values")
+    id_cliente = valores[0]
+
+    if messagebox.askyesno("Confirmação", "Deseja realmente excluir este cliente?"):
+        conn = conecta_bd()
+        cursor = conn.cursor()
+        cursor.execute('DELETE FROM clientes WHERE id = %s', (id_cliente,))
+        conn.commit()
+        conn.close()
+
+        listar_clientes()
+        atualizar_comboboxes_pedido()
+        messagebox.showinfo("Sucesso", "Cliente excluído com sucesso!")
+
+def limpar_campos_cliente():
+    entry_nome_cliente.delete(0, END)
+    entry_telefone_cliente.delete(0, END)
+    entry_email_cliente.delete(0, END)
+
+def alterar_cliente():
+    selecionado = tree_clientes.focus()
+    if not selecionado:
+        messagebox.showwarning("Atenção", "Selecione um cliente para alterar!")
+        return
+
+    valores = tree_clientes.item(selecionado, "values")
+    id_cliente = valores[0]
+
+    nome = entry_nome_cliente.get()
+    telefone = entry_telefone_cliente.get()
+    email = entry_email_cliente.get()
+
+    if nome == '':
+        messagebox.showwarning("Atenção", "Nome é obrigatório!")
+        return
+
+    conn = conecta_bd()
+    cursor = conn.cursor()
+    cursor.execute('''
+        UPDATE clientes SET nome = %s, telefone = %s, email = %s WHERE id = %s
+    ''', (nome, telefone, email, id_cliente))
+    conn.commit()
+    conn.close()
+
+    listar_clientes()
+    atualizar_comboboxes_pedido()
+    limpar_campos_cliente()
+    messagebox.showinfo("Sucesso", "Cliente alterado com sucesso!")
+
+# ==================== CRUD Pratos ====================
+
+def cadastrar_prato():
+    nome = entry_nome_prato.get()
+    descricao = entry_descricao_prato.get()
+    preco = entry_preco_prato.get()
+
+    if nome == '' or preco == '':
+        messagebox.showwarning("Atenção", "Nome e Preço são obrigatórios!")
+        return
+
+    try:
+        preco = float(preco)
+    except:
+        messagebox.showerror("Erro", "Preço deve ser um número!")
+        return
+
+    conn = conecta_bd()
+    cursor = conn.cursor()
+    cursor.execute('INSERT INTO pratos (nome, descricao, preco) VALUES (%s, %s, %s)',
+                   (nome, descricao, preco))
+    conn.commit()
+    conn.close()
+
+    listar_pratos()
+    atualizar_comboboxes_pedido()
+    limpar_campos_prato()
+    messagebox.showinfo("Sucesso", "Prato cadastrado com sucesso!")
+
+def listar_pratos():
+    for item in tree_pratos.get_children():
+        tree_pratos.delete(item)
+
+    conn = conecta_bd()
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM pratos')
+    dados = cursor.fetchall()
+    conn.close()
+
+    for row in dados:
+        tree_pratos.insert("", END, values=row)
+
+def excluir_prato():
+    selecionado = tree_pratos.focus()
+    if not selecionado:
+        messagebox.showwarning("Atenção", "Selecione um prato para excluir!")
+        return
+
+    valores = tree_pratos.item(selecionado, "values")
+    id_prato = valores[0]
+
+    if messagebox.askyesno("Confirmação", "Deseja realmente excluir este prato?"):
+        conn = conecta_bd()
+        cursor = conn.cursor()
+        cursor.execute('DELETE FROM pratos WHERE id = %s', (id_prato,))
+        conn.commit()
+        conn.close()
+
+        listar_pratos()
+        atualizar_comboboxes_pedido()
+        messagebox.showinfo("Sucesso", "Prato excluído com sucesso!")
+
+def limpar_campos_prato():
+    entry_nome_prato.delete(0, END)
+    entry_descricao_prato.delete(0, END)
+    entry_preco_prato.delete(0, END)
+
+def alterar_prato():
+    selecionado = tree_pratos.focus()
+    if not selecionado:
+        messagebox.showwarning("Atenção", "Selecione um prato para alterar!")
+        return
+
+    valores = tree_pratos.item(selecionado, "values")
+    id_prato = valores[0]
+
+    nome = entry_nome_prato.get()
+    descricao = entry_descricao_prato.get()
+    preco = entry_preco_prato.get()
+
+    if nome == '' or preco == '':
+        messagebox.showwarning("Atenção", "Nome e Preço são obrigatórios!")
+        return
+
+    try:
+        preco = float(preco)
+    except:
+        messagebox.showerror("Erro", "Preço deve ser um número!")
+        return
+
+    conn = conecta_bd()
+    cursor = conn.cursor()
+    cursor.execute('''
+        UPDATE pratos SET nome = %s, descricao = %s, preco = %s WHERE id = %s
+    ''', (nome, descricao, preco, id_prato))
+    conn.commit()
+    conn.close()
+
+    listar_pratos()
+    atualizar_comboboxes_pedido()
+    limpar_campos_prato()
+    messagebox.showinfo("Sucesso", "Prato alterado com sucesso!")
+
+# ==================== CRUD Pedidos ====================
+
+def cadastrar_pedido():
+    nome_cliente = combobox_cliente_pedido.get()
+    nome_prato = combobox_prato_pedido.get()
+    quantidade = entry_quantidade_pedido.get()
+
+    if not nome_cliente or not nome_prato or quantidade == '':
+        messagebox.showwarning("Atenção", "Todos os campos são obrigatórios!")
+        return
+
+    try:
+        quantidade = int(quantidade)
+    except:
+        messagebox.showerror("Erro", "Quantidade deve ser um número inteiro!")
+        return
+
+    conn = conecta_bd()
+    cursor = conn.cursor()
+
+    cursor.execute('SELECT id, telefone FROM clientes WHERE nome = %s', (nome_cliente,))
+    cliente_info = cursor.fetchone()
+
+    cursor.execute('SELECT id, preco FROM pratos WHERE nome = %s', (nome_prato,))
+    result = cursor.fetchone()
+
+    if not cliente_info or not result:
+        messagebox.showerror("Erro", "Cliente ou prato não encontrado!")
+        conn.close()
+        return
+
+    id_cliente = cliente_info[0]
+    telefone_cliente = cliente_info[1]
+    id_prato = result[0]
+    preco = result[1]
+    total = preco * quantidade
+
+    cursor.execute('INSERT INTO pedidos (id_cliente, id_prato, quantidade, total) VALUES (%s, %s, %s, %s)',
+                   (id_cliente, id_prato, quantidade, total))
+    conn.commit()
+    conn.close()
+
+    # Enviar SMS com detalhes do pedido
+    mensagem_sms = (f"Olá {nome_cliente}, seu pedido de {quantidade}x {nome_prato} "
+                    f"foi registrado com sucesso! Total: R$ {total:.2f}")
+    enviar_sms(telefone_cliente, mensagem_sms)
+
+    listar_pedidos()
+    limpar_campos_pedido()
+    messagebox.showinfo("Sucesso", "Pedido cadastrado com sucesso!")
+
+def listar_pedidos():
+    for item in tree_pedidos.get_children():
+        tree_pedidos.delete(item)
+
+    conn = conecta_bd()
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT pedidos.id, clientes.nome, pratos.nome, pedidos.quantidade, pedidos.total
+        FROM pedidos
+        JOIN clientes ON pedidos.id_cliente = clientes.id
+        JOIN pratos ON pedidos.id_prato = pratos.id
+    ''')
+    dados = cursor.fetchall()
+    conn.close()
+
+    for row in dados:
+        tree_pedidos.insert("", END, values=row)
+
+def excluir_pedido():
+    selecionado = tree_pedidos.focus()
+    if not selecionado:
+        messagebox.showwarning("Atenção", "Selecione um pedido para excluir!")
+        return
+
+    valores = tree_pedidos.item(selecionado, "values")
+    id_pedido = valores[0]
+
+    if messagebox.askyesno("Confirmação", "Deseja realmente excluir este pedido?"):
+        conn = conecta_bd()
+        cursor = conn.cursor()
+        cursor.execute('DELETE FROM pedidos WHERE id = %s', (id_pedido,))
+        conn.commit()
+        conn.close()
+
+        listar_pedidos()
+        messagebox.showinfo("Sucesso", "Pedido excluído com sucesso!")
+
+def limpar_campos_pedido():
+    combobox_cliente_pedido.set('')
+    combobox_prato_pedido.set('')
+    entry_quantidade_pedido.delete(0, END)
+
+def alterar_pedido():
+    selecionado = tree_pedidos.focus()
+    if not selecionado:
+        messagebox.showwarning("Atenção", "Selecione um pedido para alterar!")
+        return
+
+    valores = tree_pedidos.item(selecionado, "values")
+    id_pedido = valores[0]
+
+    nome_cliente = combobox_cliente_pedido.get()
+    nome_prato = combobox_prato_pedido.get()
+    quantidade = entry_quantidade_pedido.get()
+
+    if not nome_cliente or not nome_prato or quantidade == '':
+        messagebox.showwarning("Atenção", "Todos os campos são obrigatórios!")
+        return
+
+    try:
+        quantidade = int(quantidade)
+    except:
+        messagebox.showerror("Erro", "Quantidade deve ser um número inteiro!")
+        return
+
+    conn = conecta_bd()
+    cursor = conn.cursor()
+
+    cursor.execute('SELECT id, telefone FROM clientes WHERE nome = %s', (nome_cliente,))
+    cliente_info = cursor.fetchone()
+
+    cursor.execute('SELECT id, preco FROM pratos WHERE nome = %s', (nome_prato,))
+    prato_info = cursor.fetchone()
+
+    if not cliente_info or not prato_info:
+        messagebox.showerror("Erro", "Cliente ou prato não encontrado!")
+        conn.close()
+        return
+
+    id_cliente = cliente_info[0]
+    telefone_cliente = cliente_info[1]
+    id_prato = prato_info[0]
+    preco = prato_info[1]
+    total = preco * quantidade
+
+    cursor.execute('''
+        UPDATE pedidos SET id_cliente = %s, id_prato = %s, quantidade = %s, total = %s WHERE id = %s
+    ''', (id_cliente, id_prato, quantidade, total, id_pedido))
+    conn.commit()
+    conn.close()
+
+    # Enviar SMS com detalhes do pedido alterado
+    mensagem_sms = (f"Olá {nome_cliente}, seu pedido (ID {id_pedido}) foi alterado para "
+                    f"{quantidade}x {nome_prato}. Total: R$ {total:.2f}")
+    enviar_sms(telefone_cliente, mensagem_sms)
+
+    listar_pedidos()
+    limpar_campos_pedido()
+    messagebox.showinfo("Sucesso", "Pedido alterado com sucesso!")
+
+def on_tree_clientes_select(event):
+    selecionado = tree_clientes.focus()
+    if selecionado:
+        valores = tree_clientes.item(selecionado, "values")
+        entry_nome_cliente.delete(0, END)
+        entry_nome_cliente.insert(0, valores[1])
+        entry_telefone_cliente.delete(0, END)
+        entry_telefone_cliente.insert(0, valores[2])
+        entry_email_cliente.delete(0, END)
+        entry_email_cliente.insert(0, valores[3])
+
+def on_tree_pratos_select(event):
+    selecionado = tree_pratos.focus()
+    if selecionado:
+        valores = tree_pratos.item(selecionado, "values")
+        entry_nome_prato.delete(0, END)
+        entry_nome_prato.insert(0, valores[1])
+        entry_descricao_prato.delete(0, END)
+        entry_descricao_prato.insert(0, valores[2])
+        entry_preco_prato.delete(0, END)
+        entry_preco_prato.insert(0, valores[3])
+
+def on_tree_pedidos_select(event):
+    selecionado = tree_pedidos.focus()
+    if selecionado:
+        valores = tree_pedidos.item(selecionado, "values")
+        combobox_cliente_pedido.set(valores[1])
+        combobox_prato_pedido.set(valores[2])
+        entry_quantidade_pedido.delete(0, END)
+        entry_quantidade_pedido.insert(0, valores[3])
+
+# ==================== Interface Gráfica ====================
+
+janela = Tk()
+janela.title("Sistema de Restaurante")
+
+# Abas
+notebook = ttk.Notebook(janela)
+notebook.pack(padx=10, pady=10, fill='both', expand=True)
+
+# === Aba Clientes ===
+aba_clientes = Frame(notebook)
+notebook.add(aba_clientes, text='Cliente')
+
+Label(aba_clientes, text="Nome:").grid(row=0, column=0, sticky=W)
+entry_nome_cliente = Entry(aba_clientes, width=30)
+entry_nome_cliente.grid(row=0, column=1)
+
+Label(aba_clientes, text="Telefone:").grid(row=1, column=0, sticky=W)
+entry_telefone_cliente = Entry(aba_clientes, width=30)
+entry_telefone_cliente.grid(row=1, column=1)
+
+Label(aba_clientes, text="Email:").grid(row=2, column=0, sticky=W)
+entry_email_cliente = Entry(aba_clientes, width=30)
+entry_email_cliente.grid(row=2, column=1)
+
+Button(aba_clientes, text="Cadastrar", command=cadastrar_cliente).grid(row=3, column=0, pady=5)
+Button(aba_clientes, text="Alterar", command=alterar_cliente).grid(row=3, column=1, pady=5)
+Button(aba_clientes, text="Excluir", command=excluir_cliente).grid(row=3, column=2, pady=5)
+
+# Treeview Clientes
+tree_clientes = ttk.Treeview(aba_clientes, columns=("id", "nome", "telefone", "email"), show="headings")
+tree_clientes.heading("id", text="ID")
+tree_clientes.heading("nome", text="Nome")
+tree_clientes.heading("telefone", text="Telefone")
+tree_clientes.heading("email", text="Email")
+tree_clientes.column("id", width=30)
+tree_clientes.column("nome", width=150)
+tree_clientes.column("telefone", width=100)
+tree_clientes.column("email", width=150)
+tree_clientes.grid(row=4, column=0, columnspan=3, pady=10)
+tree_clientes.bind("<<TreeviewSelect>>", on_tree_clientes_select)
+
+# == Aba Chatbot == 
+
+
+# === Aba Pratos ===
+aba_pratos = Frame(notebook)
+notebook.add(aba_pratos, text='Pratos')
+
+Label(aba_pratos, text="Nome:").grid(row=0, column=0, sticky=W)
+entry_nome_prato = Entry(aba_pratos, width=30)
+entry_nome_prato.grid(row=0, column=1)
+
+Label(aba_pratos, text="Descrição:").grid(row=1, column=0, sticky=W)
+entry_descricao_prato = Entry(aba_pratos, width=30)
+entry_descricao_prato.grid(row=1, column=1)
+
+Label(aba_pratos, text="Preço:").grid(row=2, column=0, sticky=W)
+entry_preco_prato = Entry(aba_pratos, width=30)
+entry_preco_prato.grid(row=2, column=1)
+
+Button(aba_pratos, text="Cadastrar", command=cadastrar_prato).grid(row=3, column=0, pady=5)
+Button(aba_pratos, text="Alterar", command=alterar_prato).grid(row=3, column=1, pady=5)
+Button(aba_pratos, text="Excluir", command=excluir_prato).grid(row=3, column=2, pady=5)
+
+# Treeview Pratos
+tree_pratos = ttk.Treeview(aba_pratos, columns=("id", "nome", "descricao", "preco"), show="headings")
+tree_pratos.heading("id", text="ID")
+tree_pratos.heading("nome", text="Nome")
+tree_pratos.heading("descricao", text="Descrição")
+tree_pratos.heading("preco", text="Preço")
+tree_pratos.column("id", width=30)
+tree_pratos.column("nome", width=150)
+tree_pratos.column("descricao", width=150)
+tree_pratos.column("preco", width=80)
+tree_pratos.grid(row=4, column=0, columnspan=3, pady=10)
+tree_pratos.bind("<<TreeviewSelect>>", on_tree_pratos_select)
+
+# === Aba Pedidos ===
+aba_pedidos = Frame(notebook)
+notebook.add(aba_pedidos, text='Pedidos')
+
+Label(aba_pedidos, text="Cliente:").grid(row=0, column=0, sticky=W)
+combobox_cliente_pedido = ttk.Combobox(aba_pedidos, width=28)
+combobox_cliente_pedido.grid(row=0, column=1)
+
+Label(aba_pedidos, text="Prato:").grid(row=1, column=0, sticky=W)
+combobox_prato_pedido = ttk.Combobox(aba_pedidos, width=28)
+combobox_prato_pedido.grid(row=1, column=1)
+
+Label(aba_pedidos, text="Quantidade:").grid(row=2, column=0, sticky=W)
+entry_quantidade_pedido = Entry(aba_pedidos, width=30)
+entry_quantidade_pedido.grid(row=2, column=1)
+
+Button(aba_pedidos, text="Cadastrar", command=cadastrar_pedido).grid(row=3, column=0, pady=5)
+Button(aba_pedidos, text="Alterar", command=alterar_pedido).grid(row=3, column=1, pady=5)
+Button(aba_pedidos, text="Excluir", command=excluir_pedido).grid(row=3, column=2, pady=5)
+
+# Treeview Pedidos
+tree_pedidos = ttk.Treeview(aba_pedidos, columns=("id", "cliente", "prato", "quantidade", "total"), show="headings")
+tree_pedidos.heading("id", text="ID")
+tree_pedidos.heading("cliente", text="Cliente")
+tree_pedidos.heading("prato", text="Prato")
+tree_pedidos.heading("quantidade", text="Qtd")
+tree_pedidos.heading("total", text="Total (R$)")
+tree_pedidos.column("id", width=30)
+tree_pedidos.column("cliente", width=150)
+tree_pedidos.column("prato", width=150)
+tree_pedidos.column("quantidade", width=50)
+tree_pedidos.column("total", width=80)
+tree_pedidos.grid(row=4, column=0, columnspan=3, pady=10)
+tree_pedidos.bind("<<TreeviewSelect>>", on_tree_pedidos_select)
+
+# Atualizar comboboxes no início
+atualizar_comboboxes_pedido()
+listar_clientes()
+listar_pratos()
+listar_pedidos()
+
+
+
+janela.mainloop()
