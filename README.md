@@ -19,5 +19,7 @@ Para usar a funcionalidade da API/Twilio:
 - Insira as chaves que estão disponíveis no arquivo PDF fornecido separadamente.
 
 - Trabalho elaborado por: 
-Bruno Peres da Costa - 11221100885
-Gabriel Boneti Monteiro - 11221104047
+
+- Bruno Peres da Costa - 11221100885
+
+- Gabriel Boneti Monteiro - 11221104047
